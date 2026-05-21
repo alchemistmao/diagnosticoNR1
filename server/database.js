@@ -6,7 +6,15 @@ const { Pool } = pg;
 // Railway provides DATABASE_URL automatically when you add PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10,                        // máximo de conexões simultâneas
+  idleTimeoutMillis: 30000,       // fecha conexão ociosa após 30s
+  connectionTimeoutMillis: 10000  // timeout de 10s para obter conexão
+});
+
+// Captura erros do pool antes que derrubem o processo
+pool.on('error', (err) => {
+  console.error('Erro inesperado no pool do PostgreSQL:', err.message);
 });
 
 // Diagnóstico NR-1 original para migração

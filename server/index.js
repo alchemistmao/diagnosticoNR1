@@ -78,9 +78,26 @@ app.use((err, req, res, next) => {
 
 // Initialize database then start server
 initDatabase().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
     console.log(`🐘 Conectado ao PostgreSQL`);
+  });
+
+  // Timeout de 30s por request — evita conexões penduradas
+  server.setTimeout(30000);
+
+  // Graceful shutdown ao receber SIGTERM (Railway, deploys, etc)
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM recebido — encerrando servidor...');
+    server.close(() => {
+      console.log('Servidor encerrado com sucesso.');
+      process.exit(0);
+    });
+    // Força saída após 10s se ainda houver conexões abertas
+    setTimeout(() => {
+      console.warn('Timeout no shutdown — forçando saída.');
+      process.exit(1);
+    }, 10000);
   });
 }).catch(err => {
   console.error('Erro ao inicializar banco:', err);
