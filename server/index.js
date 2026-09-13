@@ -6,7 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-import { initDatabase } from './database.js';
+import { initDatabase, pool } from './database.js';
+import { seedDemoLogtech } from './seed-demo-logtech.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import departmentsRoutes from './routes/departments.js';
@@ -85,6 +86,9 @@ initDatabase().then(() => {
 
   // Timeout de 30s por request — evita conexões penduradas
   server.setTimeout(30000);
+
+  // Demo dataset "LogTech" — idempotent, insert-only; runs after the server is up so the healthcheck is not delayed
+  seedDemoLogtech(pool).catch(err => console.error('[SEED] Demo seed failed (server keeps running):', err.message));
 
   // Graceful shutdown ao receber SIGTERM (Railway, deploys, etc)
   process.on('SIGTERM', () => {
