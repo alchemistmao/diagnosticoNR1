@@ -2,7 +2,7 @@
  * Demo data seeder — "LogTech" (fictional reverse-logistics company, 80 employees)
  *
  * INSERT-ONLY. This script never deletes or updates existing rows.
- * It creates: 1 diagnostic, 9 dimensions, 28 questions, 7 departments,
+ * It creates: 1 diagnostic, 10 dimensions, 29 questions (26 Likert + 1 eNPS + 2 open), 7 departments,
  * 80 users (role 'user'), 80 enrollments, 80 responses (100% response rate),
  * and grants access to the new diagnostic for every existing RH user.
  *
@@ -13,7 +13,9 @@
  *        node server/seed-demo-logtech.js            # runs the seed
  *        node server/seed-demo-logtech.js --dry-run  # prints the plan, writes nothing
  *
- * Re-running is safe: if a diagnostic with the same name already exists, the seeder aborts.
+ * Re-running is safe: if a diagnostic with the same name already exists, the seeder only applies
+ * pending upgrades to that dataset (department renames, missing eNPS — see upgradeExisting) and
+ * otherwise changes nothing.
  */
 
 import pg from 'pg';
@@ -57,7 +59,10 @@ const DIAGNOSTIC = {
   is_nr1: true,
 };
 
-// Same 26 Likert items used by the app's built-in NR-1 template, plus 2 open questions.
+const ENPS_QUESTION_TEXT =
+  'Em uma escala de 0 a 10, o quanto você recomendaria a LogTech como um lugar para trabalhar a um amigo ou familiar?';
+
+// Same 26 Likert items used by the app's built-in NR-1 template, plus 1 eNPS (0-10) and 2 open questions.
 const DIMENSIONS = [
   {
     key: 'org',
@@ -134,6 +139,13 @@ const DIMENSIONS = [
     ],
   },
   {
+    key: 'enps',
+    name: 'eNPS',
+    questions: [
+      { text: ENPS_QUESTION_TEXT, type: 'nps' },
+    ],
+  },
+  {
     key: 'open',
     name: 'Percepções Abertas',
     questions: [
@@ -158,7 +170,7 @@ const DEPARTMENTS = [
     dims: { clar: -0.4, lid: -0.25, rel: 0.2, sau: 0.05 },
   },
   {
-    name: 'Cosmética e Recondicionamento', headcount: 10, base: 0.0, openRate: 0.35,
+    name: 'Produção', headcount: 10, base: 0.0, openRate: 0.35,
     dims: { clar: -0.15, rel: 0.25, org: 0.1 },
   },
   {
@@ -178,6 +190,12 @@ const DEPARTMENTS = [
     dims: { lid: 0.4, rel: 0.2, org: 0.1, sau: 0.15 },
   },
 ];
+
+// Departments renamed after the first production seed (old name → new name).
+// upgradeExisting() applies these to datasets that were seeded with the old name.
+const RENAMED_DEPARTMENTS = {
+  'Cosmética e Recondicionamento': 'Produção',
+};
 
 // Company-wide dimension sentiment (transversal issues)
 const DIM_SENTIMENT = {
@@ -231,7 +249,7 @@ const OPEN_ANSWERS = {
       'Melhorar o estoque de peças para não ficar parado esperando.',
     ],
   },
-  'Cosmética e Recondicionamento': {
+  'Produção': {
     q1: [
       'O trabalho é repetitivo e no fim do dia o braço e as costas doem. Não tem ginástica laboral nem rodízio.',
       'Quando muda o padrão de acabamento ninguém avisa antes, a gente descobre quando o lote volta.',
@@ -358,6 +376,45 @@ function likertFor(sentiment, personal) {
   return clamp(Math.round(v), 1, 5);
 }
 
+// eNPS (0-10), derived from each person's own Likert answers so it is consistent with the
+// rest of their response. It uses a separate RNG stream so adding it does not change the
+// Likert values produced by the main stream (fresh seeds stay identical to the first one).
+const enpsRand = mulberry32(20260914);
+const DETRACTOR_VALUES = [1, 2, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6];
+
+function enpsFor(answers, likertQuestions) {
+  let sum = 0, n = 0;
+  for (const q of likertQuestions) {
+    const v = answers[q.id];
+    if (v === undefined || v === null) continue;
+    sum += q.inverted ? 6 - v : v; // flip negative statements so higher = better
+    n++;
+  }
+  const mean = n > 0 ? sum / n : 3;
+  // mean 1.5 → -1, 3 → 0, 4.5 → +1, plus a little individual noise
+  const s = clamp((mean - 3) / 1.5 + (enpsRand() - 0.5) * 0.4, -1, 1);
+  const detractorProb = 0.40 - 0.25 * s; // 65% .. 15%
+  const neutralProb = 0.30 - 0.05 * s;   // 35% .. 25%
+  const r = enpsRand();
+  if (r < detractorProb) return DETRACTOR_VALUES[Math.floor(enpsRand() * DETRACTOR_VALUES.length)];
+  if (r < detractorProb + neutralProb) return 7 + Math.floor(enpsRand() * 2);
+  return 9 + Math.floor(enpsRand() * 2);
+}
+
+function enpsSummary(values) {
+  const total = values.length;
+  if (total === 0) return { score: null, promoters: 0, neutrals: 0, detractors: 0 };
+  const promoters = values.filter((v) => v >= 9).length;
+  const detractors = values.filter((v) => v <= 6).length;
+  const neutrals = total - promoters - detractors;
+  return {
+    score: Math.round(((promoters - detractors) / total) * 100),
+    promoters: Math.round((promoters / total) * 100),
+    neutrals: Math.round((neutrals / total) * 100),
+    detractors: Math.round((detractors / total) * 100),
+  };
+}
+
 function buildResponse(dept, questionsByDim) {
   const personal = randn() * 0.4;
   const answers = {};
@@ -365,7 +422,7 @@ function buildResponse(dept, questionsByDim) {
 
   for (const dim of DIMENSIONS) {
     const qs = questionsByDim[dim.key];
-    if (dim.key === 'open') continue;
+    if (dim.key === 'open' || dim.key === 'enps') continue;
     const sentiment = dept.base + (DIM_SENTIMENT[dim.key] || 0) + (dept.dims[dim.key] || 0);
     for (const q of qs) {
       let value = likertFor(sentiment, personal);
@@ -373,6 +430,10 @@ function buildResponse(dept, questionsByDim) {
       answers[q.id] = value;
     }
   }
+
+  const likertQuestions = Object.values(questionsByDim).flat().filter((q) => q.type === 'likert5');
+  for (const q of questionsByDim.enps) answers[q.id] = enpsFor(answers, likertQuestions);
+
   return { answers, openAnswers, personal };
 }
 
@@ -384,8 +445,7 @@ export async function seedDemoLogtech(pool, { dryRun = false } = {}) {
   try {
     const existing = await client.query('SELECT id FROM diagnostics WHERE name = $1', [DIAGNOSTIC.name]);
     if (existing.rows.length > 0) {
-      console.log(`[SEED] "${DIAGNOSTIC.name}" already exists (id ${existing.rows[0].id}) — skipping, nothing changed.`);
-      return { status: 'exists', diagnosticId: existing.rows[0].id };
+      return await upgradeExisting(client, existing.rows[0].id, { dryRun });
     }
 
     console.log(`[SEED] ${dryRun ? 'DRY RUN — nothing will be written' : 'LIVE RUN'}`);
@@ -427,6 +487,8 @@ export async function seedDemoLogtech(pool, { dryRun = false } = {}) {
     }
     const openQ1 = questionsByDim.open[0].id;
     const openQ2 = questionsByDim.open[1].id;
+    const enpsQuestionId = questionsByDim.enps[0].id;
+    const enpsValues = [];
 
     // 3. Departments
     for (const dept of DEPARTMENTS) {
@@ -474,6 +536,7 @@ export async function seedDemoLogtech(pool, { dryRun = false } = {}) {
         );
 
         const { answers, openAnswers } = buildResponse(dept, questionsByDim);
+        enpsValues.push(answers[enpsQuestionId]);
 
         // Open answers: only a fraction of people write, and pools are drawn without replacement
         if (rand() < dept.openRate) {
@@ -509,6 +572,8 @@ export async function seedDemoLogtech(pool, { dryRun = false } = {}) {
     console.log(`       diagnostic id: ${diagnosticId}`);
     console.log(`       users: ${usersCreated} (password "${DEMO_PASSWORD}", domain @${EMAIL_DOMAIN})`);
     console.log(`       responses: ${responsesCreated} (${openCreated} with open answers)`);
+    const enps = enpsSummary(enpsValues);
+    console.log(`       eNPS: ${enps.score} (promoters ${enps.promoters}% / neutrals ${enps.neutrals}% / detractors ${enps.detractors}%)`);
     console.log(`       RH users granted access: ${rhUsers.rows.length}`);
     return { status: 'created', diagnosticId, users: usersCreated, responses: responsesCreated };
   } catch (err) {
@@ -518,6 +583,108 @@ export async function seedDemoLogtech(pool, { dryRun = false } = {}) {
   } finally {
     client.release();
   }
+}
+
+// ------------------------------------------------------------------
+// Upgrades for a dataset that was already seeded (idempotent, scoped to that diagnostic).
+// Never deletes anything. Each upgrade is skipped when it has already been applied.
+// ------------------------------------------------------------------
+async function upgradeExisting(client, diagnosticId, { dryRun = false } = {}) {
+  console.log(`[SEED] "${DIAGNOSTIC.name}" already exists (id ${diagnosticId}) — checking for pending upgrades.`);
+  const pending = [];
+
+  // Upgrade 1: renamed departments
+  const depts = await client.query('SELECT id, name FROM departments WHERE diagnostic_id = $1', [diagnosticId]);
+  const renames = depts.rows
+    .filter((d) => RENAMED_DEPARTMENTS[d.name])
+    .map((d) => ({ id: d.id, from: d.name, to: RENAMED_DEPARTMENTS[d.name] }));
+  renames.forEach((r) => pending.push(`rename department "${r.from}" → "${r.to}"`));
+
+  // Upgrade 2: eNPS question + an eNPS answer in every existing response
+  const npsQ = await client.query(
+    "SELECT q.id FROM questions q JOIN dimensions d ON d.id = q.dimension_id WHERE d.diagnostic_id = $1 AND q.type = 'nps'",
+    [diagnosticId]
+  );
+  const needsEnps = npsQ.rows.length === 0;
+  if (needsEnps) pending.push('add eNPS dimension/question and an eNPS answer to every existing response');
+
+  if (pending.length === 0) {
+    console.log('[SEED] Up to date — nothing changed.');
+    return { status: 'exists', diagnosticId };
+  }
+  console.log(`[SEED] ${dryRun ? 'DRY RUN — nothing will be written' : 'LIVE RUN'}. Pending upgrades:`);
+  pending.forEach((p) => console.log(`        - ${p}`));
+  if (dryRun) return { status: 'dry-run', diagnosticId };
+
+  await client.query('BEGIN');
+
+  for (const r of renames) {
+    await client.query('UPDATE departments SET name = $1 WHERE id = $2 AND diagnostic_id = $3', [r.to, r.id, diagnosticId]);
+  }
+
+  let enps = null;
+  if (needsEnps) {
+    const enpsDim = DIMENSIONS.find((d) => d.key === 'enps');
+    const openDim = DIMENSIONS.find((d) => d.key === 'open');
+
+    // Place eNPS right before the open-questions dimension (same order as a fresh seed)
+    const openRow = await client.query(
+      'SELECT sort_order FROM dimensions WHERE diagnostic_id = $1 AND name = $2',
+      [diagnosticId, openDim.name]
+    );
+    let sortOrder;
+    if (openRow.rows.length > 0) {
+      sortOrder = openRow.rows[0].sort_order;
+      await client.query(
+        'UPDATE dimensions SET sort_order = sort_order + 1 WHERE diagnostic_id = $1 AND sort_order >= $2',
+        [diagnosticId, sortOrder]
+      );
+    } else {
+      const mx = await client.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM dimensions WHERE diagnostic_id = $1', [diagnosticId]);
+      sortOrder = mx.rows[0].next;
+    }
+
+    const dimRes = await client.query(
+      'INSERT INTO dimensions (diagnostic_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id',
+      [diagnosticId, enpsDim.name, sortOrder]
+    );
+    const q = enpsDim.questions[0];
+    const qRes = await client.query(
+      'INSERT INTO questions (dimension_id, text, type, inverted, required, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [dimRes.rows[0].id, q.text, q.type, false, true, 0]
+    );
+    const enpsQuestionId = qRes.rows[0].id;
+
+    const likertQuestions = (await client.query(
+      "SELECT q.id, q.inverted FROM questions q JOIN dimensions d ON d.id = q.dimension_id WHERE d.diagnostic_id = $1 AND q.type = 'likert5'",
+      [diagnosticId]
+    )).rows;
+    const responses = await client.query('SELECT id, answers FROM responses WHERE diagnostic_id = $1 ORDER BY id', [diagnosticId]);
+
+    const values = [];
+    for (const row of responses.rows) {
+      const answers = typeof row.answers === 'string' ? JSON.parse(row.answers) : row.answers;
+      if (answers[enpsQuestionId] !== undefined) continue;
+      const v = enpsFor(answers, likertQuestions);
+      values.push(v);
+      // jsonb concatenation only adds the new key; every existing answer is kept untouched
+      await client.query(
+        'UPDATE responses SET answers = answers || $1::jsonb WHERE id = $2 AND diagnostic_id = $3',
+        [JSON.stringify({ [enpsQuestionId]: v }), row.id, diagnosticId]
+      );
+    }
+    enps = { questionId: enpsQuestionId, responses: values.length, ...enpsSummary(values) };
+  }
+
+  await client.query('COMMIT');
+
+  console.log('[SEED] Upgrade done.');
+  renames.forEach((r) => console.log(`       department renamed: "${r.from}" → "${r.to}"`));
+  if (enps) {
+    console.log(`       eNPS question id: ${enps.questionId}, answers added to ${enps.responses} responses`);
+    console.log(`       eNPS: ${enps.score} (promoters ${enps.promoters}% / neutrals ${enps.neutrals}% / detractors ${enps.detractors}%)`);
+  }
+  return { status: 'upgraded', diagnosticId, renames: renames.length, enps };
 }
 
 // Standalone CLI mode

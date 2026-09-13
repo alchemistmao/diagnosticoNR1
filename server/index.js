@@ -87,7 +87,7 @@ initDatabase().then(() => {
   // Timeout de 30s por request — evita conexões penduradas
   server.setTimeout(30000);
 
-  // Demo dataset "LogTech" — idempotent, insert-only; runs after the server is up so the healthcheck is not delayed
+  // Demo dataset "LogTech" — idempotent: creates it once, later boots only apply pending upgrades to it; runs after the server is up so the healthcheck is not delayed
   seedDemoLogtech(pool).catch(err => console.error('[SEED] Demo seed failed (server keeps running):', err.message));
 
   // Graceful shutdown ao receber SIGTERM (Railway, deploys, etc)
