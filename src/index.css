@@ -1594,6 +1594,28 @@ tr:last-child td {
   margin-bottom: 20px;
 }
 
+.risk-alerts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 20px;
+}
+
+.risk-alerts-header h3 {
+  margin-bottom: 0;
+}
+
+.risk-legend.compact {
+  margin-top: 0;
+  padding: 8px 12px;
+}
+
+.risk-legend.compact .risk-legend-items {
+  gap: 12px;
+}
+
 .risk-cards {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

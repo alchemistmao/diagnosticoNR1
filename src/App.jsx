@@ -10,6 +10,40 @@ import { authApi, usersApi, departmentsApi, responsesApi, diagnosticsApi, getSto
 // CONTEXT
 // ==========================================
 
+// Risk band legend — shown both next to the "Alertas de Risco" title and at the bottom of the section
+const RiskLegend = ({ compact = false }) => (
+  <div className={`risk-legend${compact ? ' compact' : ''}`}>
+    {!compact && <h4>Legenda - Faixas de Risco</h4>}
+    <div className="risk-legend-items">
+      <div className="risk-legend-item">
+        <span className="risk-legend-icon">🔴</span>
+        <span className="risk-legend-label">Crítico</span>
+        <span className="risk-legend-range">&lt; 2.5</span>
+      </div>
+      <div className="risk-legend-item">
+        <span className="risk-legend-icon">🟠</span>
+        <span className="risk-legend-label">Alto Risco</span>
+        <span className="risk-legend-range">2.5 - 2.9</span>
+      </div>
+      <div className="risk-legend-item">
+        <span className="risk-legend-icon">🟡</span>
+        <span className="risk-legend-label">Risco Moderado</span>
+        <span className="risk-legend-range">3.0 - 3.4</span>
+      </div>
+      <div className="risk-legend-item">
+        <span className="risk-legend-icon">🔵</span>
+        <span className="risk-legend-label">Neutro</span>
+        <span className="risk-legend-range">3.5 - 4.1</span>
+      </div>
+      <div className="risk-legend-item">
+        <span className="risk-legend-icon">🟢</span>
+        <span className="risk-legend-label">Engajado</span>
+        <span className="risk-legend-range">≥ 4.2</span>
+      </div>
+    </div>
+  </div>
+);
+
 const AuthContext = createContext(null);
 
 const useAuth = () => useContext(AuthContext);
@@ -1123,11 +1157,14 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
           {/* ALERTAS DE RISCO */}
           {stats.riskAlerts && (
             <div className="risk-alerts-section">
-              <h3>
-                {selectedDept 
-                  ? `🚨 Alertas de Risco: ${selectedDept.name}` 
-                  : '🚨 Alertas de Risco (Anônimo)'}
-              </h3>
+              <div className="risk-alerts-header">
+                <h3>
+                  {selectedDept 
+                    ? `🚨 Alertas de Risco: ${selectedDept.name}` 
+                    : '🚨 Alertas de Risco (Anônimo)'}
+                </h3>
+                <RiskLegend compact />
+              </div>
               
               {/* Cards de Alerta - Dados do departamento filtrado ou total */}
               {(() => {
@@ -1279,36 +1316,7 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
               )}
 
               {/* Legenda das Faixas de Risco */}
-              <div className="risk-legend">
-                <h4>Legenda - Faixas de Risco</h4>
-                <div className="risk-legend-items">
-                  <div className="risk-legend-item">
-                    <span className="risk-legend-icon">🔴</span>
-                    <span className="risk-legend-label">Crítico</span>
-                    <span className="risk-legend-range">&lt; 2.5</span>
-                  </div>
-                  <div className="risk-legend-item">
-                    <span className="risk-legend-icon">🟠</span>
-                    <span className="risk-legend-label">Alto Risco</span>
-                    <span className="risk-legend-range">2.5 - 2.9</span>
-                  </div>
-                  <div className="risk-legend-item">
-                    <span className="risk-legend-icon">🟡</span>
-                    <span className="risk-legend-label">Risco Moderado</span>
-                    <span className="risk-legend-range">3.0 - 3.4</span>
-                  </div>
-                  <div className="risk-legend-item">
-                    <span className="risk-legend-icon">🔵</span>
-                    <span className="risk-legend-label">Neutro</span>
-                    <span className="risk-legend-range">3.5 - 4.1</span>
-                  </div>
-                  <div className="risk-legend-item">
-                    <span className="risk-legend-icon">🟢</span>
-                    <span className="risk-legend-label">Engajado</span>
-                    <span className="risk-legend-range">≥ 4.2</span>
-                  </div>
-                </div>
-              </div>
+              <RiskLegend />
             </div>
           )}
 
