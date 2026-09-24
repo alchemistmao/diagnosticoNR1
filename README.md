@@ -1,4 +1,19 @@
-# Diagnóstico Psicossocial NR-1 | Cuidar+
+# NR-1 Psychosocial Risk Diagnostic — Cuidar+
+
+A diagnostic platform for Brazil's NR-1 regulation, which requires employers to assess
+psychosocial risk at work. Employees answer a validated questionnaire; the system aggregates
+the answers by department, places each dimension in a risk band, raises alerts and tracks
+eNPS over time. In production at two companies.
+
+Stack: React 18 with Vite, Recharts and Framer Motion on the front end; Node.js and Express
+on the back end; PostgreSQL for persistence; JWT and bcrypt for authentication; Resend for
+email. Deployed on Railway.
+
+Built for Cuidar+, where I lead technology. The documentation below is in Portuguese.
+
+---
+
+## Documentação
 
 Sistema de diagnóstico psicossocial para conformidade com a NR-1, desenvolvido para a Cuidar+.
 
