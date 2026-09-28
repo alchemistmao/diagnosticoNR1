@@ -526,16 +526,15 @@ router.get('/stats', authenticate, isAdminOrRH, async (req, res) => {
     
     const questions = await getQuestionsForDiagnostic(diagId);
     const allResponses = await dbAll(`
-      SELECT r.*, u.department_id as user_department_id 
+      SELECT r.* 
       FROM responses r 
-      LEFT JOIN users u ON r.user_id = u.id 
       WHERE r.diagnostic_id = $1
     `, [diagId]);
     
-    // Use user's current department instead of response's saved department
+    // Group by the department the respondent selected when answering (the survey is anonymous,
+    // so the department saved on the response — not the user's current record — is the source of truth)
     allResponses.forEach(r => {
-      const userDept = r.user_department_id != null ? parseInt(r.user_department_id) : null;
-      r.department_id = userDept || parseInt(r.department_id);
+      r.department_id = r.department_id != null ? parseInt(r.department_id) : null;
     });
     
     // Apply demographic filters first
@@ -568,8 +567,7 @@ router.get('/stats', authenticate, isAdminOrRH, async (req, res) => {
     const departments = await dbAll(`
       SELECT d.id, d.name, COUNT(r.id) as response_count 
       FROM departments d 
-      LEFT JOIN users u ON d.id = u.department_id
-      LEFT JOIN responses r ON u.id = r.user_id AND r.diagnostic_id = $1
+      LEFT JOIN responses r ON r.department_id = d.id AND r.diagnostic_id = $1
       WHERE d.diagnostic_id = $1 OR d.diagnostic_id IS NULL
       GROUP BY d.id HAVING COUNT(r.id) > 0 ORDER BY d.name
     `, [diagId]);
