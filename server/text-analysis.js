@@ -8,7 +8,7 @@ import { dbGet, dbAll, dbRun } from './database.js';
 const MODEL = 'claude-opus-5-5';
 const MAX_INDICATORS = 10;
 const MAX_CATEGORIES = 6;
-const MIN_GROUP_SIZE = 5;   // anonymity: smaller groups are merged into "Outros"
+export const MIN_GROUP_SIZE = 5;   // anonymity: smaller groups are merged into "Outros"
 const MIN_TEXT_RESPONDENTS = 5;
 const BATCH_SIZE = 30;
 const CONCURRENCY = 3;

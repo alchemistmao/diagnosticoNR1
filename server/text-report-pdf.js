@@ -32,7 +32,7 @@ const HEAT_HIGH = [176, 62, 40];
 const FONT = { regular: 'Helvetica', bold: 'Helvetica-Bold', italic: 'Helvetica-Oblique' };
 
 // The built-in PDF fonts only cover WinAnsi; drop anything else (emoji etc.)
-const sanitize = (value) => String(value ?? '')
+export const sanitize = (value) => String(value ?? '')
   .replace(/[‘’]/g, "'")
   .replace(/[^ -~ -ÿ–—“”•…]/g, '')
   .replace(/\s+/g, ' ')

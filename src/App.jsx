@@ -820,6 +820,7 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
   const [exporting, setExporting] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [hasTextReport, setHasTextReport] = useState(false);
+  const [listing, setListing] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -888,6 +889,18 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
       alert('Erro ao gerar relatório: ' + err.message);
     } finally {
       setReporting(false);
+    }
+  };
+
+  const handleTextListing = async () => {
+    if (!diagnosticFilter) return;
+    setListing(true);
+    try {
+      await responsesApi.downloadTextListing(diagnosticFilter);
+    } catch (err) {
+      alert('Erro ao gerar PDF: ' + err.message);
+    } finally {
+      setListing(false);
     }
   };
 
@@ -1034,6 +1047,17 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
               title="Relatório executivo em PDF com a análise das respostas abertas"
             >
               {reporting ? '⏳ Analisando textos... (até 5 min)' : '📄 Relatório Executivo (PDF)'}
+            </button>
+          )}
+
+          {diagnosticFilter && stats?.totalResponses > 0 && (
+            <button 
+              className="btn-export"
+              onClick={handleTextListing}
+              disabled={listing}
+              title="Todas as respostas abertas, por pergunta e por cargo"
+            >
+              {listing ? '⏳ Gerando...' : '📝 Textos por cargo (PDF)'}
             </button>
           )}
 

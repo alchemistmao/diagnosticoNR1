@@ -1,7 +1,8 @@
 import express from 'express';
 import { dbGet, dbAll, dbRun, dbQuery } from '../database.js';
 import { authenticate, isAdminOrRH } from '../auth.js';
-import { startAnalysis, getAnalysisStatus, getLatestAnalysis } from '../text-analysis.js';
+import { startAnalysis, getAnalysisStatus, getLatestAnalysis, collectTexts } from '../text-analysis.js';
+import { buildTextListingPdf } from '../text-listing-pdf.js';
 import { buildTextReportPdf } from '../text-report-pdf.js';
 
 const router = express.Router();
@@ -863,6 +864,33 @@ router.get('/report/text/pdf', authenticate, isAdminOrRH, async (req, res) => {
   } catch (error) {
     console.error('Erro ao gerar PDF:', error);
     res.status(500).json({ error: 'Erro ao gerar PDF' });
+  }
+});
+
+// All open-text answers, verbatim, by question and job role (no AI)
+router.get('/report/text/listing', authenticate, isAdminOrRH, async (req, res) => {
+  try {
+    const { diagnostic_id } = req.query;
+    if (!diagnostic_id) {
+      return res.status(400).json({ error: 'diagnostic_id é obrigatório' });
+    }
+    const data = await collectTexts(parseInt(diagnostic_id));
+    if (!data) {
+      return res.status(404).json({ error: 'Diagnóstico não encontrado' });
+    }
+    if (!data.respondents.some(r => Object.keys(r.texts).length > 0)) {
+      return res.status(400).json({ error: 'Nenhuma resposta com texto encontrada para este diagnóstico' });
+    }
+
+    const pdf = await buildTextListingPdf(data);
+    const safeName = data.diagnostic.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    const dateStr = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_textos_${dateStr}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    console.error('Erro ao gerar PDF de textos:', error);
+    res.status(500).json({ error: 'Erro ao gerar PDF de textos' });
   }
 });
 

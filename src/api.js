@@ -326,9 +326,13 @@ export const responsesApi = {
     return request(`/responses/report/text/status?diagnostic_id=${diagnosticId}`);
   },
 
-  async downloadTextReport(diagnosticId) {
+  async downloadTextListing(diagnosticId) {
+    return this.downloadTextReport(diagnosticId, 'listing');
+  },
+
+  async downloadTextReport(diagnosticId, kind = 'pdf') {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/responses/report/text/pdf?diagnostic_id=${diagnosticId}`, {
+    const response = await fetch(`${API_URL}/responses/report/text/${kind}?diagnostic_id=${diagnosticId}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
