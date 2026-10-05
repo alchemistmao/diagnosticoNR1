@@ -143,16 +143,16 @@ export function buildTextReportPdf(report) {
       { value: String(meta.totalResponses), label: 'respondentes na pesquisa' },
       { value: `${Math.round((meta.withText / meta.totalResponses) * 100)}%`, label: `deixaram comentários (${meta.withText} pessoas)` },
       { value: String(meta.commentCount), label: 'comentários analisados' },
-      { value: `${topIndicator.pct}%`, label: `citam "${topIndicator.name}", o tema mais presente` },
+      { value: `${topIndicator.pct}%`, label: `citam "${topIndicator.name}", o tema mais citado` },
     ];
     const tileW = (CW - 30) / 4;
     tiles.forEach((tile, i) => {
       const x = M + i * (tileW + 10);
-      box(x, y, tileW, 74, C.panel, 6);
+      box(x, y, tileW, 84, C.panel, 6);
       text(tile.value, x + 12, y + 11, { size: 23, font: FONT.bold, width: tileW - 24 });
-      text(tile.label, x + 12, y + 41, { size: 7.8, color: C.muted, width: tileW - 24, height: 28, lineGap: 1 });
+      text(tile.label, x + 12, y + 41, { size: 7.8, color: C.muted, width: tileW - 24, height: 38, lineGap: 1 });
     });
-    y += 74 + 26;
+    y += 84 + 24;
 
     y = sectionTitle('Principais achados', y);
     for (const item of narrative.summary.slice(0, 4)) {
@@ -363,8 +363,8 @@ export function buildTextReportPdf(report) {
         const sx = M + i * (sW + 10);
         box(sx, y, sW, sH, C.panel, 6);
         box(sx, y, sW, 3, C.praise);
-        text(s.title, sx + 12, y + 14, { size: 10, font: FONT.bold, width: sW - 24, height: 24, lineGap: 1 });
-        const titleH = Math.min(24, heightOf(s.title, { size: 10, font: FONT.bold, width: sW - 24, lineGap: 1 }));
+        text(s.title, sx + 12, y + 14, { size: 10, font: FONT.bold, width: sW - 24, height: 26, lineGap: 1 });
+        const titleH = Math.min(26, heightOf(s.title, { size: 10, font: FONT.bold, width: sW - 24, lineGap: 1 }));
         text(s.text, sx + 12, y + 18 + titleH, { size: 8.5, color: C.muted, width: sW - 24, height: sH - 28 - titleH, lineGap: 1.5 });
       });
       y += sH + 24;

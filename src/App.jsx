@@ -1033,7 +1033,7 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
               disabled={reporting}
               title="Relatório executivo em PDF com a análise das respostas abertas"
             >
-              {reporting ? '⏳ Analisando textos... (1 a 3 min)' : '📄 Relatório Executivo (PDF)'}
+              {reporting ? '⏳ Analisando textos... (até 5 min)' : '📄 Relatório Executivo (PDF)'}
             </button>
           )}
 
