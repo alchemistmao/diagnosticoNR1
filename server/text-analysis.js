@@ -1,6 +1,7 @@
-// Executive analysis of the free-text answers of a diagnostic.
-// The AI defines the indicators and classifies each respondent; every count and
-// percentage in the report is computed here, from those classifications.
+// Quantifies the free-text answers of a diagnostic.
+// The AI only defines the themes and classifies each respondent; every count and
+// percentage in the report is computed here, from those classifications. The
+// report carries no AI-written conclusions or recommendations.
 import Anthropic from '@anthropic-ai/sdk';
 import { dbGet, dbAll, dbRun } from './database.js';
 
@@ -113,21 +114,8 @@ const CLASSIFICATION_SCHEMA = obj({
   })),
 });
 
-const NARRATIVE_SCHEMA = obj({
-  headline: str,
-  summary: arr(str),
-  alerts: arr(obj({ severity: { type: 'string', enum: ['critico', 'atencao'] }, title: str, text: str })),
-  strengths: arr(obj({ title: str, text: str })),
-  group_insight: str,
-  recommendations: arr(obj({
-    title: str,
-    action: str,
-    horizon: { type: 'string', enum: ['30 dias', '90 dias', '6 meses'] },
-  })),
-});
-
-const SYSTEM_PROMPT = `Você é um consultor sênior de pessoas e cultura organizacional. Analisa respostas abertas e anônimas de uma pesquisa interna com colaboradores de uma empresa brasileira e prepara material para a diretoria (C-level).
-Escreva sempre em português do Brasil, em linguagem executiva, direta e sem jargão. Baseie-se apenas no que está nos textos e nos números fornecidos; não invente fatos. Nunca inclua nomes de pessoas nem detalhes que identifiquem um respondente.`;
+const SYSTEM_PROMPT = `Você é um analista de pesquisas de clima organizacional. Organiza respostas abertas e anônimas de uma pesquisa interna com colaboradores de uma empresa brasileira em temas e categorias, para que possam ser contadas e apresentadas à diretoria.
+Escreva sempre em português do Brasil, com rótulos curtos, neutros e descritivos. Baseie-se apenas no que está nos textos; não interprete além do que foi escrito nem sugira ações. Nunca inclua nomes de pessoas nem detalhes que identifiquem um respondente.`;
 
 async function callClaude(client, schema, prompt, maxTokens = 32000) {
   const message = await client.beta.messages.stream({
@@ -221,37 +209,6 @@ async function classifyAll(client, respondents, openQuestions, taxonomy) {
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker));
   return results.flatMap(r => r.respondents);
-}
-
-async function buildNarrative(client, stats) {
-  const prompt = `Estes são os resultados quantificados da análise das respostas abertas da pesquisa "${stats.meta.diagnosticName}". Os números foram contados a partir da classificação de cada resposta; use-os exatamente como estão.
-
-${JSON.stringify({
-    respondentes: stats.meta.totalResponses,
-    respondentes_com_comentario: stats.meta.withText,
-    indicadores: stats.indicators.map(i => ({
-      nome: i.name, descricao: i.description, mencionam: i.mentions, pct_dos_respondentes: i.pct,
-      criticas: i.critical, elogios: i.praise, neutras: i.neutral, citacoes: i.quotes,
-    })),
-    [`criticas_por_${stats.meta.groupLabel.toLowerCase()}`]: stats.groups.map((g, gi) => ({
-      grupo: g.name, respondentes: g.n,
-      pct_com_critica: Object.fromEntries(stats.indicators.map(i => [i.name, i.byGroup[gi].pctCritical])),
-    })),
-    perguntas: stats.questions.map(q => ({
-      pergunta: q.text, responderam: q.answered,
-      categorias: q.categories.map(c => ({ rotulo: c.label, respostas: c.count, pct: c.pct })),
-    })),
-  }, null, 1)}
-
-Escreva para a diretoria:
-- "headline": uma frase única (até 22 palavras) com a principal conclusão, citando um número.
-- "summary": 3 ou 4 achados, uma frase cada, cada um com pelo menos um número (ex.: "42% dos colaboradores apontam...").
-- "alerts": de 2 a 4 alertas que pedem ação. "critico" para o que tem alta incidência de críticas ou risco para pessoas e operação; "atencao" para o que merece acompanhamento. Título de até 6 palavras e texto de uma ou duas frases com o número que sustenta o alerta.
-- "strengths": de 2 a 3 pontos fortes (o que os colaboradores elogiam), com título curto e uma frase com número.
-- "group_insight": duas ou três frases lendo as diferenças entre os grupos (${stats.meta.groupLabel.toLowerCase()}): onde cada crítica se concentra. Se não houver grupos, descreva a concentração geral.
-- "recommendations": de 4 a 5 recomendações práticas, em ordem de prioridade, cada uma com título de até 6 palavras, uma ação concreta em uma ou duas frases e o horizonte.`;
-
-  return callClaude(client, NARRATIVE_SCHEMA, prompt, 16000);
 }
 
 // ==========================================
@@ -376,7 +333,6 @@ export async function runAnalysis(diagnosticId) {
   const classifications = await classifyAll(client, withText, data.openQuestions, taxonomy);
   const stats = aggregate(data, taxonomy, classifications);
   if (stats.indicators.length === 0) throw new Error('A análise não encontrou temas nos textos.');
-  stats.narrative = await buildNarrative(client, stats);
   return stats;
 }
 

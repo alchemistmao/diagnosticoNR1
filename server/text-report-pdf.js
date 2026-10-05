@@ -24,7 +24,6 @@ const C = {
   critical: '#C8553D',
   neutral: '#C2C8CC',
   praise: '#2F6DB5',
-  warning: '#D9A21B',
   white: '#FFFFFF',
 };
 const HEAT_LOW = [251, 240, 236];
@@ -57,7 +56,7 @@ export function buildTextReportPdf(report) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const { meta, indicators, groups, questions, narrative } = report;
+    const { meta, indicators, groups, questions } = report;
     const TOTAL_PAGES = 5;
     const groupWord = meta.groupLabel.toLowerCase();
     const dateStr = new Date(meta.generatedAt).toLocaleDateString('pt-BR', {
@@ -114,7 +113,7 @@ export function buildTextReportPdf(report) {
 
     const sectionTitle = (label, y) => {
       text(label.toUpperCase(), M, y, { size: 8, font: FONT.bold, color: C.teal, width: CW, spacing: 0.8 });
-      return y + 16;
+      return y + 20;
     };
 
     // ==========================================
@@ -134,49 +133,53 @@ export function buildTextReportPdf(report) {
     text(meta.diagnosticName, textX, 138, { size: 10, font: FONT.bold, color: C.white, width: CW - 104, height: 12 });
     text(dateStr, textX, 153, { size: 9, color: '#CFE3DF', width: CW - 104 });
 
-    let y = 226;
-    y += text(narrative.headline, M, y, { size: 15.5, font: FONT.bold, width: CW, height: 62, lineGap: 2.5 }) + 20;
+    let y = 228;
 
     // KPI tiles
-    const topIndicator = indicators[0];
     const tiles = [
       { value: String(meta.totalResponses), label: 'respondentes na pesquisa' },
       { value: `${Math.round((meta.withText / meta.totalResponses) * 100)}%`, label: `deixaram comentários (${meta.withText} pessoas)` },
       { value: String(meta.commentCount), label: 'comentários analisados' },
-      { value: `${topIndicator.pct}%`, label: `citam "${topIndicator.name}", o tema mais citado` },
+      { value: String(indicators.length), label: 'temas identificados nos textos' },
     ];
     const tileW = (CW - 30) / 4;
     tiles.forEach((tile, i) => {
       const x = M + i * (tileW + 10);
-      box(x, y, tileW, 84, C.panel, 6);
+      box(x, y, tileW, 74, C.panel, 6);
       text(tile.value, x + 12, y + 11, { size: 23, font: FONT.bold, width: tileW - 24 });
-      text(tile.label, x + 12, y + 41, { size: 7.8, color: C.muted, width: tileW - 24, height: 38, lineGap: 1 });
+      text(tile.label, x + 12, y + 41, { size: 7.8, color: C.muted, width: tileW - 24, height: 28, lineGap: 1 });
     });
-    y += 84 + 24;
+    y += 74 + 30;
 
-    y = sectionTitle('Principais achados', y);
-    for (const item of narrative.summary.slice(0, 4)) {
-      box(M, y + 3.5, 5, 5, C.accent, 1);
-      y += text(item, M + 14, y, { size: 10, width: CW - 14, height: 40, lineGap: 2 }) + 9;
-    }
-    y += 12;
+    // Numeric highlight rows: big percentage, label, detail and a thin bar
+    const highlightRow = (pctValue, label, detail, color, ry) => {
+      text(`${pctValue}%`, M, ry, { size: 17, font: FONT.bold, width: 56 });
+      text(label, M + 64, ry, { size: 10.5, font: FONT.bold, width: CW - 64 - 150, height: 13 });
+      text(detail, M + 64, ry + 14, { size: 8, color: C.muted, width: CW - 64 - 150, height: 10 });
+      box(W - M - 136, ry + 7, 136, 7, C.faint, 3.5);
+      box(W - M - 136, ry + 7, Math.max(3, (pctValue / 100) * 136), 7, color, 3.5);
+      line(M, ry + 31, W - M, ry + 31, C.faint, 0.5);
+    };
 
-    y = sectionTitle('Alertas', y);
-    for (const alert of narrative.alerts.slice(0, 4)) {
-      const bodyH = heightOf(alert.text, { size: 9, width: CW - 110, lineGap: 1.5 });
-      const cardH = Math.max(40, 12 + 13 + Math.min(bodyH, 36) + 10);
-      if (y + cardH > H - 52) break;
-      const critical = alert.severity === 'critico';
-      box(M, y, CW, cardH, C.panel, 5);
-      box(M, y, 4, cardH, critical ? C.critical : C.warning);
-      // Severity is carried by the label and the marker shape, not by color alone
-      const tagX = M + 16;
-      if (critical) doc.polygon([tagX + 5, y + 13], [tagX + 10, y + 22], [tagX, y + 22]).fill(C.critical);
-      else doc.circle(tagX + 5, y + 18, 4.5).fill(C.warning);
-      text(critical ? 'CRÍTICO' : 'ATENÇÃO', tagX + 15, y + 14.5, { size: 7, font: FONT.bold, width: 60, spacing: 0.5 });
-      text(alert.title, M + 96, y + 11, { size: 10.5, font: FONT.bold, width: CW - 110, height: 13 });
-      text(alert.text, M + 96, y + 25, { size: 9, color: C.muted, width: CW - 110, height: 36, lineGap: 1.5 });
-      y += cardH + 8;
+    y = sectionTitle('Temas mais citados nas respostas abertas', y);
+    indicators.slice(0, 5).forEach((ind) => {
+      highlightRow(ind.pct, ind.name,
+        `${ind.mentions} de ${meta.totalResponses} respondentes · ${ind.critical} críticas · ${ind.neutral} neutras · ${ind.praise} elogios`, C.teal, y);
+      y += 39;
+    });
+    y += 16;
+
+    // Group x theme cells with the highest share of critical mentions
+    const hotspots = groups.flatMap((g, gi) => indicators.map(ind => ({
+      group: g, ind, value: ind.byGroup[gi].pctCritical, count: ind.byGroup[gi].critical,
+    }))).filter(h => h.count > 0).sort((a, b) => b.value - a.value || b.count - a.count).slice(0, 5);
+    if (hotspots.length > 0) {
+      y = sectionTitle(`Maiores concentrações de crítica por ${groupWord}`, y);
+      hotspots.forEach((h) => {
+        highlightRow(h.value, `${h.group.name} · ${h.ind.name}`,
+          `${h.count} de ${h.group.n} respondentes deste ${groupWord} fazem crítica ligada ao tema`, C.critical, y);
+        y += 39;
+      });
     }
     footer(1);
 
@@ -302,12 +305,29 @@ export function buildTextReportPdf(report) {
     text(`${heatMax}% com menção crítica`, rampX + rampW + 6, y - 0.5, { size: 7, color: C.muted, width: 160 });
     y += 30;
 
-    y = sectionTitle('Leitura', y);
-    const insightH = heightOf(narrative.group_insight, { size: 10, width: CW - 32, lineGap: 2.5 });
-    const insightBoxH = Math.min(insightH, 110) + 26;
-    box(M, y, CW, insightBoxH, C.panel, 6);
-    text(narrative.group_insight, M + 16, y + 13, { size: 10, width: CW - 32, height: 110, lineGap: 2.5 });
-    y += insightBoxH + 14;
+    // Highest and lowest group for each theme
+    if (shownGroups.length >= 2) {
+      y = sectionTitle(`Maior e menor concentração de crítica por tema`, y);
+      const colA = M + hLabelW;
+      const colW = (CW - hLabelW) / 2;
+      text(`${meta.groupLabel} com MAIOR percentual`, colA, y, { size: 7.3, font: FONT.bold, color: C.muted, width: colW - 8 });
+      text(`${meta.groupLabel} com MENOR percentual`, colA + colW, y, { size: 7.3, font: FONT.bold, color: C.muted, width: colW - 8 });
+      y += 14;
+      const spreadRowH = Math.min(17, (H - 100 - y) / indicators.length);
+      indicators.forEach((ind) => {
+        const cells = shownGroups.map(g => ({ name: g.name, value: ind.byGroup[groups.indexOf(g)].pctCritical }));
+        const high = cells.reduce((a, b) => (b.value > a.value ? b : a));
+        const low = cells.reduce((a, b) => (b.value < a.value ? b : a));
+        line(M, y - 3, W - M, y - 3, C.faint, 0.5);
+        text(ind.name, M, y, { size: 8.5, font: FONT.bold, width: hLabelW - 10, height: 10 });
+        text(`${high.value}%`, colA, y, { size: 8.5, font: FONT.bold, width: 30 });
+        text(high.name, colA + 32, y, { size: 8.5, color: C.muted, width: colW - 44, height: 10 });
+        text(`${low.value}%`, colA + colW, y, { size: 8.5, font: FONT.bold, width: 30 });
+        text(low.name, colA + colW + 32, y, { size: 8.5, color: C.muted, width: colW - 44, height: 10 });
+        y += spreadRowH;
+      });
+      y += 8;
+    }
 
     const notes = [];
     if (shownGroups.length === 0) notes.push(`Nenhum ${groupWord} tem ${meta.minGroupSize} ou mais respondentes; por anonimato, só o total da empresa é exibido.`);
@@ -351,38 +371,53 @@ export function buildTextReportPdf(report) {
     // ==========================================
     // PAGE 5 — strengths, recommendations, method
     // ==========================================
-    y = startPage(5, 'Pontos fortes e recomendações',
-      'O que preservar e por onde começar, em ordem de prioridade.');
+    y = startPage(5, 'Críticas e elogios por tema',
+      `Percentual dos ${meta.totalResponses} respondentes que fazem crítica (à esquerda) ou elogio (à direita) em cada tema.`);
 
-    y = sectionTitle('Pontos fortes', y);
-    const strengths = narrative.strengths.slice(0, 3);
-    if (strengths.length > 0) {
-      const sW = (CW - (strengths.length - 1) * 10) / strengths.length;
-      const sH = 112;
-      strengths.forEach((s, i) => {
-        const sx = M + i * (sW + 10);
-        box(sx, y, sW, sH, C.panel, 6);
-        box(sx, y, sW, 3, C.praise);
-        text(s.title, sx + 12, y + 14, { size: 10, font: FONT.bold, width: sW - 24, height: 26, lineGap: 1 });
-        const titleH = Math.min(26, heightOf(s.title, { size: 10, font: FONT.bold, width: sW - 24, lineGap: 1 }));
-        text(s.text, sx + 12, y + 18 + titleH, { size: 8.5, color: C.muted, width: sW - 24, height: sH - 28 - titleH, lineGap: 1.5 });
-      });
-      y += sH + 24;
-    }
-
-    y = sectionTitle('Recomendações priorizadas', y);
-    const recs = narrative.recommendations.slice(0, 5);
     const methodTop = H - 150;
-    const recH = Math.min(68, (methodTop - y) / Math.max(recs.length, 1) - 6);
-    recs.forEach((rec, i) => {
-      const ry = y + i * (recH + 6);
-      doc.circle(M + 11, ry + 13, 11).fill(C.cover);
-      text(String(i + 1), M, ry + 8.5, { size: 10.5, font: FONT.bold, color: C.white, width: 22, align: 'center' });
-      text(rec.title, M + 34, ry + 2, { size: 10.5, font: FONT.bold, width: CW - 34 - 76, height: 13 });
-      box(W - M - 64, ry + 1, 64, 15, C.panel, 7.5);
-      text(rec.horizon, W - M - 64, ry + 5, { size: 7.3, font: FONT.bold, color: C.teal, width: 64, align: 'center' });
-      text(rec.action, M + 34, ry + 18, { size: 9, color: C.muted, width: CW - 34, height: recH - 22, lineGap: 1.5 });
+    const dLabelW = 150;
+    const dAreaX = M + dLabelW;
+    const dAreaW = CW - dLabelW;
+    const dSideW = dAreaW / 2 - 34;      // room for the value labels at both ends
+    const dCenter = dAreaX + dAreaW / 2;
+    const dMax = Math.max(10, ...indicators.map(i => Math.max(i.pctCritical, Math.round((i.praise / meta.totalResponses) * 100))));
+
+    box(dCenter - 96, y + 1, 9, 9, C.critical, 2);
+    text('Crítica', dCenter - 83, y + 1.5, { size: 8, color: C.muted, width: 50 });
+    box(dCenter + 40, y + 1, 9, 9, C.praise, 2);
+    text('Elogio', dCenter + 53, y + 1.5, { size: 8, color: C.muted, width: 50 });
+    y += 22;
+
+    const dRowH = Math.min(27, 290 / indicators.length);
+    line(dCenter, y - 4, dCenter, y + dRowH * indicators.length - 6, C.neutral, 0.75);
+    indicators.forEach((ind, idx) => {
+      const ry = y + idx * dRowH;
+      const praisePct = Math.round((ind.praise / meta.totalResponses) * 100);
+      text(ind.name, M, ry + 2, { size: 9, font: FONT.bold, width: dLabelW - 8, height: 11 });
+      const cw = (ind.pctCritical / dMax) * dSideW;
+      const pw = (praisePct / dMax) * dSideW;
+      if (ind.critical > 0) box(dCenter - 1 - Math.max(2, cw), ry, Math.max(2, cw), 13, C.critical, 2);
+      if (ind.praise > 0) box(dCenter + 1, ry, Math.max(2, pw), 13, C.praise, 2);
+      text(`${ind.pctCritical}%`, dCenter - 1 - cw - 34, ry + 2.5, { size: 8.5, font: FONT.bold, width: 30, align: 'right' });
+      text(`${praisePct}%`, dCenter + 1 + pw + 4, ry + 2.5, { size: 8.5, font: FONT.bold, width: 30 });
     });
+    y += dRowH * indicators.length + 14;
+
+    // Quotes from the themes not quoted on page 2
+    const moreQuotes = indicators.filter(i => i.quotes.length > 0).slice(4, 8).map(i => ({ quote: i.quotes[0], name: i.name }));
+    if (moreQuotes.length > 0) {
+      y = sectionTitle('Nas palavras dos colaboradores', y);
+      const qW = (CW - 14) / 2;
+      const qH = Math.min(62, (methodTop - y) / Math.ceil(moreQuotes.length / 2) - 8);
+      moreQuotes.forEach((q, i) => {
+        const qx = M + (i % 2) * (qW + 14);
+        const qy = y + Math.floor(i / 2) * (qH + 8);
+        box(qx, qy, qW, qH, C.panel, 5);
+        box(qx, qy, 3, qH, C.accent);
+        text(`“${q.quote}”`, qx + 14, qy + 9, { size: 9, font: FONT.italic, width: qW - 26, height: qH - 30, lineGap: 1.5 });
+        text(q.name.toUpperCase(), qx + 14, qy + qH - 15, { size: 6.5, font: FONT.bold, color: C.muted, width: qW - 26, spacing: 0.5, height: 8 });
+      });
+    }
 
     line(M, methodTop + 6, W - M, methodTop + 6);
     text('COMO ESTE RELATÓRIO FOI FEITO', M, methodTop + 18, { size: 7.5, font: FONT.bold, color: C.teal, width: CW, spacing: 0.8 });
