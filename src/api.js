@@ -314,6 +314,48 @@ export const responsesApi = {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   },
+
+  async startTextReport(diagnosticId, force = false) {
+    return request('/responses/report/text/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ diagnostic_id: diagnosticId, force }),
+    });
+  },
+
+  async getTextReportStatus(diagnosticId) {
+    return request(`/responses/report/text/status?diagnostic_id=${diagnosticId}`);
+  },
+
+  async downloadTextReport(diagnosticId) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/responses/report/text/pdf?diagnostic_id=${diagnosticId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Erro ao gerar PDF');
+    }
+
+    const disposition = response.headers.get('Content-Disposition');
+    let filename = 'relatorio_executivo.pdf';
+    if (disposition) {
+      const match = disposition.match(/filename="(.+)"/);
+      if (match) filename = match[1];
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ==========================================

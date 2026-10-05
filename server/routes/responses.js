@@ -1,6 +1,8 @@
 import express from 'express';
 import { dbGet, dbAll, dbRun, dbQuery } from '../database.js';
 import { authenticate, isAdminOrRH } from '../auth.js';
+import { startAnalysis, getAnalysisStatus, getLatestAnalysis } from '../text-analysis.js';
+import { buildTextReportPdf } from '../text-report-pdf.js';
 
 const router = express.Router();
 
@@ -800,6 +802,67 @@ router.get('/export/csv', authenticate, isAdminOrRH, async (req, res) => {
   } catch (error) {
     console.error('Erro ao exportar CSV:', error);
     res.status(500).json({ error: `Erro: ${error.message}`, code: 'SERVER_ERROR' });
+  }
+});
+
+// ==========================================
+// EXECUTIVE TEXT REPORT (AI analysis of open answers + PDF)
+// ==========================================
+
+// Start (or reuse) the analysis. Runs in the background; poll /report/text/status
+router.post('/report/text/analyze', authenticate, isAdminOrRH, async (req, res) => {
+  try {
+    const { diagnostic_id, force } = req.body;
+    if (!diagnostic_id) {
+      return res.status(400).json({ error: 'diagnostic_id é obrigatório' });
+    }
+    const diagnostic = await dbGet('SELECT id FROM diagnostics WHERE id = $1', [diagnostic_id]);
+    if (!diagnostic) {
+      return res.status(404).json({ error: 'Diagnóstico não encontrado' });
+    }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: 'Chave da API de IA não configurada. Configure ANTHROPIC_API_KEY no Railway.' });
+    }
+    res.json(await startAnalysis(diagnostic.id, { force: !!force }));
+  } catch (error) {
+    console.error('Erro ao iniciar análise de textos:', error);
+    res.status(500).json({ error: 'Erro ao iniciar análise de textos' });
+  }
+});
+
+router.get('/report/text/status', authenticate, isAdminOrRH, async (req, res) => {
+  try {
+    const { diagnostic_id } = req.query;
+    if (!diagnostic_id) {
+      return res.status(400).json({ error: 'diagnostic_id é obrigatório' });
+    }
+    res.json(await getAnalysisStatus(parseInt(diagnostic_id)));
+  } catch (error) {
+    console.error('Erro ao consultar análise de textos:', error);
+    res.status(500).json({ error: 'Erro ao consultar análise de textos' });
+  }
+});
+
+router.get('/report/text/pdf', authenticate, isAdminOrRH, async (req, res) => {
+  try {
+    const { diagnostic_id } = req.query;
+    if (!diagnostic_id) {
+      return res.status(400).json({ error: 'diagnostic_id é obrigatório' });
+    }
+    const latest = await getLatestAnalysis(parseInt(diagnostic_id));
+    if (!latest) {
+      return res.status(404).json({ error: 'Relatório ainda não foi gerado para este diagnóstico' });
+    }
+
+    const pdf = await buildTextReportPdf(latest.result);
+    const safeName = latest.result.meta.diagnosticName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    const dateStr = new Date(latest.createdAt).toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_relatorio_executivo_${dateStr}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    console.error('Erro ao gerar PDF:', error);
+    res.status(500).json({ error: 'Erro ao gerar PDF' });
   }
 });
 

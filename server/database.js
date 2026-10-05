@@ -277,6 +277,18 @@ export async function initDatabase() {
       )
     `);
 
+    // Create text_analyses table (AI analysis of open answers, insert-only; latest row wins)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS text_analyses (
+        id SERIAL PRIMARY KEY,
+        diagnostic_id INTEGER NOT NULL REFERENCES diagnostics(id) ON DELETE CASCADE,
+        responses_count INTEGER NOT NULL,
+        model VARCHAR(100),
+        result JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create user_diagnostics table (enrollment)
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_diagnostics (

@@ -818,10 +818,23 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
   const [error, setError] = useState('');
   const [demoFilters, setDemoFilters] = useState({});
   const [exporting, setExporting] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [hasTextReport, setHasTextReport] = useState(false);
 
   useEffect(() => {
     loadStats();
   }, [departmentFilter, diagnosticFilter, demoFilters]);
+
+  // Check whether an executive report already exists for this diagnostic
+  useEffect(() => {
+    setHasTextReport(false);
+    if (!diagnosticFilter) return;
+    let cancelled = false;
+    responsesApi.getTextReportStatus(diagnosticFilter)
+      .then(status => { if (!cancelled) setHasTextReport(!!status.hasReport); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [diagnosticFilter]);
 
   // Reset demo filters when diagnostic changes
   useEffect(() => {
@@ -854,6 +867,27 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
       alert('Erro ao exportar: ' + err.message);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Executive PDF: the AI analysis runs in the background, so poll until it is ready
+  const handleTextReport = async (force = false) => {
+    if (!diagnosticFilter) return;
+    if (force && !window.confirm('Refazer a análise com IA? Isso gera um novo custo de API e os números podem variar um pouco.')) return;
+    setReporting(true);
+    try {
+      let status = await responsesApi.startTextReport(diagnosticFilter, force);
+      while (status.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        status = await responsesApi.getTextReportStatus(diagnosticFilter);
+      }
+      if (status.status === 'error') throw new Error(status.error);
+      await responsesApi.downloadTextReport(diagnosticFilter);
+      setHasTextReport(true);
+    } catch (err) {
+      alert('Erro ao gerar relatório: ' + err.message);
+    } finally {
+      setReporting(false);
     }
   };
 
@@ -989,6 +1023,27 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
               title="Exportar dados brutos em CSV"
             >
               {exporting ? '⏳ Exportando...' : '📥 Exportar CSV'}
+            </button>
+          )}
+
+          {diagnosticFilter && stats?.totalResponses > 0 && (
+            <button 
+              className="btn-export"
+              onClick={() => handleTextReport(false)}
+              disabled={reporting}
+              title="Relatório executivo em PDF com a análise das respostas abertas"
+            >
+              {reporting ? '⏳ Analisando textos... (1 a 3 min)' : '📄 Relatório Executivo (PDF)'}
+            </button>
+          )}
+
+          {diagnosticFilter && hasTextReport && !reporting && (
+            <button 
+              className="btn-clear-filters"
+              onClick={() => handleTextReport(true)}
+              title="Refazer a análise dos textos com IA"
+            >
+              ↻ Reanalisar
             </button>
           )}
         </div>
