@@ -703,6 +703,12 @@ router.get('/export/csv', authenticate, isAdminOrRH, async (req, res) => {
       // Use shorter header: dimension - question number
       headers.push(`${q.dimension_name} - P${idx + 1}`);
     });
+    // Fixed open questions from the last survey screen (stored in open_answers as open1/open2)
+    const fixedOpenQuestions = [
+      { id: 'open1', header: 'Aberta - O que a empresa poderia fazer para melhorar o ambiente de trabalho?' },
+      { id: 'open2', header: 'Aberta - Algo mais que gostaria de compartilhar?' },
+    ];
+    fixedOpenQuestions.forEach(q => headers.push(q.header));
 
     // Escape CSV value
     const escapeCSV = (value) => {
@@ -758,17 +764,21 @@ router.get('/export/csv', authenticate, isAdminOrRH, async (req, res) => {
       for (const q of questions) {
         let value = answers[q.id];
         
-        // For open questions, check open_answers
+        // Open questions: the survey saves them in answers; seeded data saves them in open_answers
         if (q.type === 'open') {
-          value = openAnswers[q.id] || '';
+          value = value || openAnswers[q.id] || '';
         }
-        
+
         // For multiple choice, join with semicolon
         if (Array.isArray(value)) {
           value = value.join('; ');
         }
-        
+
         row.push(escapeCSV(value));
+      }
+
+      for (const q of fixedOpenQuestions) {
+        row.push(escapeCSV(openAnswers[q.id] || ''));
       }
       
       rows.push(row.join(','));
