@@ -1359,19 +1359,20 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
                     </tbody>
                     {(() => {
                       const levels = ['critical', 'high_risk', 'moderate_risk', 'neutral', 'engaged'];
+                      const levelClasses = ['risk-critical', 'risk-high', 'risk-moderate', 'risk-neutral', 'risk-good'];
                       const sums = levels.map(level => stats.riskAlerts.departmentList.reduce((sum, dept) => sum + (dept[level] || 0), 0));
                       const grandTotal = stats.riskAlerts.departmentList.reduce((sum, dept) => sum + (dept.total || 0), 0);
                       return (
                         <tfoot>
                           <tr>
                             <td className="risk-dept-name">Total</td>
-                            {sums.map((value, i) => <td key={levels[i]}>{value}</td>)}
+                            {sums.map((value, i) => <td key={levels[i]} className={levelClasses[i]}>{value}</td>)}
                             <td>{grandTotal}</td>
                           </tr>
                           <tr>
                             <td className="risk-dept-name">% do total</td>
                             {sums.map((value, i) => (
-                              <td key={levels[i]}>{grandTotal > 0 ? Math.round((value / grandTotal) * 100) : 0}%</td>
+                              <td key={levels[i]} className={levelClasses[i]}>{grandTotal > 0 ? Math.round((value / grandTotal) * 100) : 0}%</td>
                             ))}
                             <td>100%</td>
                           </tr>
