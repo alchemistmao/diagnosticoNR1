@@ -810,9 +810,17 @@ router.get('/export/csv', authenticate, isAdminOrRH, async (req, res) => {
 // EXECUTIVE TEXT REPORT (AI analysis of open answers + PDF)
 // ==========================================
 
+// The executive text report is paused while it is being refined; set to true to re-enable
+// (the client has the same switch in src/App.jsx)
+const TEXT_REPORT_ENABLED = false;
+const TEXT_REPORT_PAUSED_MESSAGE = 'O Relatório Executivo está em refinamento e voltará a ficar disponível em breve.';
+
 // Start (or reuse) the analysis. Runs in the background; poll /report/text/status
 router.post('/report/text/analyze', authenticate, isAdminOrRH, async (req, res) => {
   try {
+    if (!TEXT_REPORT_ENABLED) {
+      return res.status(503).json({ error: TEXT_REPORT_PAUSED_MESSAGE });
+    }
     const { diagnostic_id, force } = req.body;
     if (!diagnostic_id) {
       return res.status(400).json({ error: 'diagnostic_id é obrigatório' });
@@ -846,6 +854,9 @@ router.get('/report/text/status', authenticate, isAdminOrRH, async (req, res) =>
 
 router.get('/report/text/pdf', authenticate, isAdminOrRH, async (req, res) => {
   try {
+    if (!TEXT_REPORT_ENABLED) {
+      return res.status(503).json({ error: TEXT_REPORT_PAUSED_MESSAGE });
+    }
     const { diagnostic_id } = req.query;
     if (!diagnostic_id) {
       return res.status(400).json({ error: 'diagnostic_id é obrigatório' });

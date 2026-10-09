@@ -812,6 +812,10 @@ const UserSurvey = ({ user, onComplete }) => {
 // ADMIN/RH DASHBOARD
 // ==========================================
 
+// The executive text report is paused while it is being refined; set to true to re-enable
+// (the server has the same switch in server/routes/responses.js)
+const TEXT_REPORT_ENABLED = false;
+
 const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnostics, diagnosticFilter, setDiagnosticFilter }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -821,6 +825,7 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
   const [reporting, setReporting] = useState(false);
   const [hasTextReport, setHasTextReport] = useState(false);
   const [listing, setListing] = useState(false);
+  const [showReportNotice, setShowReportNotice] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -874,6 +879,10 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
   // Executive PDF: the AI analysis runs in the background, so poll until it is ready
   const handleTextReport = async (force = false) => {
     if (!diagnosticFilter) return;
+    if (!TEXT_REPORT_ENABLED) {
+      setShowReportNotice(true);
+      return;
+    }
     if (force && !window.confirm('Refazer a análise com IA? Isso gera um novo custo de API e os números podem variar um pouco.')) return;
     setReporting(true);
     try {
@@ -965,6 +974,37 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
 
   return (
     <div className="dashboard">
+      <AnimatePresence>
+        {showReportNotice && (
+          <motion.div 
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowReportNotice(false)}
+          >
+            <motion.div 
+              className="modal"
+              style={{ maxWidth: '460px', textAlign: 'center' }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>✨</div>
+              <h2>Relatório Executivo em refinamento</h2>
+              <p style={{ color: '#64748b', lineHeight: 1.6, margin: '12px 0 24px' }}>
+                Estamos aprimorando esta funcionalidade para entregar uma análise ainda mais
+                precisa das respostas abertas. Em breve ela estará disponível novamente.
+              </p>
+              <button className="btn-primary" onClick={() => setShowReportNotice(false)}>
+                Entendi
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="dashboard-header">
         <div>
           <h1>
@@ -1061,7 +1101,7 @@ const Dashboard = ({ departmentFilter, setDepartmentFilter, departments, diagnos
             </button>
           )}
 
-          {diagnosticFilter && hasTextReport && !reporting && (
+          {TEXT_REPORT_ENABLED && diagnosticFilter && hasTextReport && !reporting && (
             <button 
               className="btn-clear-filters"
               onClick={() => handleTextReport(true)}
